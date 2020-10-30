@@ -1,19 +1,45 @@
 //===- X86JmpJccToIret.cpp 
 
-#include "MCTargetDesc/X86BaseInfo.h"
-#include "MCTargetDesc/X86InstComments.h"
 #include "X86.h"
+#include "X86InstrBuilder.h"
 #include "X86InstrInfo.h"
 #include "X86Subtarget.h"
-#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/ScopeExit.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/SparseBitVector.h"
+#include "llvm/ADT/Statistic.h"
+#include "llvm/CodeGen/MachineBasicBlock.h"
+#include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/CodeGen/MachineInstrBuilder.h"
+#include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineOperand.h"
-#include "llvm/MC/MCInstrDesc.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/MachineSSAUpdater.h"
+#include "llvm/CodeGen/TargetInstrInfo.h"
+#include "llvm/CodeGen/TargetRegisterInfo.h"
+#include "llvm/CodeGen/TargetSchedule.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/IR/DebugLoc.h"
+#include "llvm/MC/MCSchedule.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetMachine.h"
+#include <algorithm>
 #include <cassert>
-#include <cstdint>
+#include <iterator>
+#include <utility>
+
 
 using namespace llvm;
 
@@ -45,15 +71,79 @@ private:
   const X86InstrInfo *TII = nullptr;
   MachineRegisterInfo *MRI = nullptr;
   const X86Subtarget *Subtarget = nullptr;
-  const TargetRegisterInfo *TRI = nullptr;
+  const X86RegisterInfo *TRI = nullptr;
 };
 
 } // end anonymous namespace
 
 char Jcc2IretPass::ID = 0;
 
+/* 
+                "mov %%ss, %0\n\t"
+                "pushq %q0\n\t"
+                "pushq %%rsp\n\t"
+                "addq $8, (%%rsp)\n\t"
+                "pushfq\n\t"
+                "mov %%cs, %0\n\t"
+                "pushq %q0\n\t"
+                "pushq $1f\n\t"
+                "iretq\n\t"
+                "1:"
+*/
+
 bool Jcc2IretPass::run(MachineBasicBlock &MBB) {
-  return false;
+  MachineBasicBlock::iterator termIt = MBB.getFirstTerminator();
+  bool changed = false;
+  while(termIt != MBB.end()) {
+    unsigned op = termIt->getOpcode();
+    if((op == X86::JMP_1) or (op == X86::JMP_4)) {
+
+      unsigned reg = MRI->createVirtualRegister(&X86::GR64RegClass);
+      //unsigned rsp = MRI->createVirtualRegister(&X86::GR64RegClass);
+
+      /* save initial rsp pointer */
+      //BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::MOV64rr))
+      // .addReg(reg, RegState::Define)
+      // .addReg(X86::RSP);
+
+      //push ss
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::MOV64rs))
+	.addReg(reg, RegState::Define)
+	.addReg(X86::SS);
+      
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::PUSH64r))
+	.addReg(reg, RegState::Kill);
+
+      //push stack pointer
+      //BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::PUSH64r))
+      //	.addReg(rsp, RegState::Kill);
+
+
+      //push flags
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::PUSHF64));
+
+      //push cs
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::MOV64rs))
+       	.addReg(reg, RegState::Define)
+       	.addReg(X86::CS);
+      
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::PUSH64r))
+       	.addReg(reg, RegState::Kill);
+
+
+      //push target
+
+
+      //for(auto s : MBB.successors()) {
+      //s->setLabelMustBeEmitted();
+      //}
+      changed = true;
+      break;
+    }
+    ++termIt;
+  }
+  
+  return changed;
 }
 
 bool Jcc2IretPass::runOnMachineFunction(MachineFunction &MF) {
