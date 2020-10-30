@@ -487,7 +487,7 @@ void X86PassConfig::addPreRegAlloc() {
     addPass(createX86CallFrameOptimization());
     addPass(createX86AvoidStoreForwardingBlocks());
   }
-
+  addPass(createX86JmpAndJccToIretPass());
   addPass(createX86SpeculativeLoadHardeningPass());
   addPass(createX86FlagsCopyLoweringPass());
   addPass(createX86WinAllocaExpander());

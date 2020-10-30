@@ -114,6 +114,8 @@ FunctionPass *createX86DomainReassignmentPass();
 /// encoding when possible in order to reduce code size.
 FunctionPass *createX86EvexToVexInsts();
 
+FunctionPass *createX86JmpAndJccToIretPass();
+
 /// This pass creates the thunks for the retpoline feature.
 FunctionPass *createX86IndirectThunksPass();
 
@@ -142,6 +144,8 @@ FunctionPass *createX86LoadValueInjectionRetHardeningPass();
 FunctionPass *createX86SpeculativeLoadHardeningPass();
 FunctionPass *createX86SpeculativeExecutionSideEffectSuppression();
 
+
+void initializeJcc2IretPassPass(PassRegistry &);  
 void initializeEvexToVexInstPassPass(PassRegistry &);
 void initializeFixupBWInstPassPass(PassRegistry &);
 void initializeFixupLEAPassPass(PassRegistry &);
