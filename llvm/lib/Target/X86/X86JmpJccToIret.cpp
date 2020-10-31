@@ -95,9 +95,32 @@ bool Jcc2IretPass::run(MachineBasicBlock &MBB) {
   MachineBasicBlock::iterator termIt = MBB.getFirstTerminator();
   bool changed = false;
   while(termIt != MBB.end()) {
+    MachineBasicBlock::iterator nextIt = termIt;
     unsigned op = termIt->getOpcode();
-    if((op == X86::JMP_1) or (op == X86::JMP_4)) {
+    bool isJmp = (op == X86::JMP_1) or (op == X86::JMP_4);
+    bool isJcc = (op == X86::JCC_1) or (op == X86::JCC_4);
+    
+    X86::CondCode CC = X86::COND_INVALID;
 
+    if(isJcc) {
+      ++nextIt;
+      unsigned next_op = nextIt->getOpcode();
+      isJcc &= (next_op == X86::JMP_1) or (next_op == X86::JMP_4);
+      CC = X86::getCondFromBranch(*termIt);
+      isJcc &= (CC != X86::COND_INVALID);
+    }
+    //isJcc = false;
+    
+    if(isJcc) {
+      /* target of conditional branch */
+      MachineBasicBlock *TBB = termIt->getOperand(0).getMBB();
+      /* fall-thru branch */
+      MachineBasicBlock *NTBB = nextIt->getOperand(0).getMBB();
+      TBB->setHasAddressTaken();
+      TBB->setLabelMustBeEmitted();
+      NTBB->setHasAddressTaken();
+      NTBB->setLabelMustBeEmitted();
+      
       unsigned reg = MRI->createVirtualRegister(&X86::GR64RegClass);
       unsigned rsp = MRI->createVirtualRegister(&X86::GR64RegClass);
       
@@ -129,21 +152,86 @@ bool Jcc2IretPass::run(MachineBasicBlock &MBB) {
       BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::PUSH64r))
        	.addReg(reg, RegState::Kill);
 
-      MachineBasicBlock *S = *(MBB.successors().begin());
-      S->setLabelMustBeEmitted();
+
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::MOV64ri))
+	.addReg(reg, RegState::Define)
+	.addMBB(NTBB);
+
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::MOV64ri))
+	.addReg(rsp, RegState::Define)
+	.addMBB(TBB);
+
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::CMOV64rr), reg)
+      	.addReg(reg)
+	.addReg(rsp, RegState::Kill)
+	.addImm(CC);
+      
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::PUSH64r))
+	.addReg(reg, RegState::Kill);
+      
+      
+      //BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::PUSH64r))
+      //.addReg(rsp, RegState::Kill);
+      //BuildMI(
+      //X86::getCMovOpcode(8);
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::IRET64));
+
+      MBB.erase(termIt);
+      changed = true;
+      
+      break;
+    }
+    else if(isJmp) {
+      MachineBasicBlock *S = termIt->getOperand(0).getMBB();
       S->setHasAddressTaken();
+      S->setLabelMustBeEmitted();
+      
+      unsigned reg = MRI->createVirtualRegister(&X86::GR64RegClass);
+      unsigned rsp = MRI->createVirtualRegister(&X86::GR64RegClass);
+      
+      /* save initial rsp pointer */
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::MOV64rr))
+	.addReg(rsp, RegState::Define)
+	.addReg(X86::RSP);
+
+      //push ss
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::MOV64rs))
+	.addReg(reg, RegState::Define)
+	.addReg(X86::SS);
+      
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::PUSH64r))
+	.addReg(reg, RegState::Kill);
+
+      //push stack pointer
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::PUSH64r))
+      	.addReg(rsp, RegState::Kill);
+
+      //push flags
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::PUSHF64));
+
+      //push cs
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::MOV64rs))
+       	.addReg(reg, RegState::Define)
+       	.addReg(X86::CS);
+      
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::PUSH64r))
+       	.addReg(reg, RegState::Kill);
 
       //push target
       BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::MOV64ri))
 	.addReg(reg, RegState::Define)
 	.addMBB(S);
-
       BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::PUSH64r))
-       	.addReg(reg, RegState::Kill);
+	.addReg(reg, RegState::Kill);
+
+      BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::IRET64));
+
+      MBB.erase(termIt);
       changed = true;
       
       break;
     }
+      
     ++termIt;
   }
   
