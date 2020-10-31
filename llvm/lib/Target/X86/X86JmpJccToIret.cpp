@@ -141,12 +141,12 @@ bool Jcc2IretPass::run(MachineBasicBlock &MBB) {
 	break;
       }
 
-      llvm::errs() << "current BB\n";
-      llvm::errs() << MBB << "\n";
-      llvm::errs() << "taken TBB\n";      
-      llvm::errs() << *TBB << "\n";
-      llvm::errs() << "not taken BB\n";      
-      llvm::errs() << *NTBB << "\n";
+      //llvm::errs() << "current BB\n";
+      //llvm::errs() << MBB << "\n";
+      //llvm::errs() << "taken TBB\n";      
+      //llvm::errs() << *TBB << "\n";
+      //llvm::errs() << "not taken BB\n";      
+      //llvm::errs() << *NTBB << "\n";
 
 
       
@@ -209,8 +209,8 @@ bool Jcc2IretPass::run(MachineBasicBlock &MBB) {
       while(termIt != MBB.end()) {
 	termIt = MBB.erase(termIt);	
       }
-      llvm::errs() << "after:\n";
-      llvm::errs() << MBB << "\n";
+      //llvm::errs() << "after:\n";
+      //llvm::errs() << MBB << "\n";
       changed = true;
       break;
     }
