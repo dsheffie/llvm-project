@@ -72,6 +72,23 @@ private:
   MachineRegisterInfo *MRI = nullptr;
   const X86Subtarget *Subtarget = nullptr;
   const X86RegisterInfo *TRI = nullptr;
+  static const unsigned reg = X86::R14;
+  static const unsigned rsp = X86::R15;
+  void saveR14R15(MachineBasicBlock &MBB, MachineBasicBlock::iterator &termIt) {
+      addRegOffset(BuildMI(MBB,termIt, DebugLoc(),
+			   TII->get(X86::MOV64mr)),X86::RSP, false, -48)
+	.addReg(X86::R14);
+
+      addRegOffset(BuildMI(MBB,termIt, DebugLoc(),
+			   TII->get(X86::MOV64mr)),X86::RSP, false, -56)
+	.addReg(X86::R15);
+  }
+  void restoreR14R15(MachineBasicBlock &MBB, MachineBasicBlock::iterator &termIt){
+      addRegOffset(BuildMI(MBB,termIt, DebugLoc(),
+			   TII->get(X86::MOV64rm), X86::R14),X86::RSP, false, -8);
+      addRegOffset(BuildMI(MBB,termIt, DebugLoc(),
+			   TII->get(X86::MOV64rm), X86::R15),X86::RSP, false, -16);
+    }
 };
 
 } // end anonymous namespace
@@ -80,13 +97,13 @@ char Jcc2IretPass::ID = 0;
 
 /* 
                 "mov %%ss, %0\n\t"
-                "pushq %q0\n\t"
-                "pushq %%rsp\n\t"
-                "addq $8, (%%rsp)\n\t"
-                "pushfq\n\t"
-                "mov %%cs, %0\n\t"
-                "pushq %q0\n\t"
-                "pushq $1f\n\t"
+                "pushq %q0\n\t" : offset 0, initial rsp - 8
+                "pushq %%rsp\n\t" : offset 8 , initial rsp - 16
+                "addq $8, (%%rsp)\n\t" 
+                "pushfq\n\t" : offset 16 initial rsp - 24
+                "mov %%cs, %0\n\t" 
+                "pushq %q0\n\t" : offset 24 initial rsp - 32
+                "pushq $1f\n\t": offset 32 initial rsp - 40
                 "iretq\n\t"
                 "1:"
 */
@@ -95,7 +112,6 @@ bool Jcc2IretPass::run(MachineBasicBlock &MBB) {
   MachineBasicBlock::iterator termIt = MBB.getFirstTerminator();
   bool changed = false;
   while(termIt != MBB.end()) {
-    MachineBasicBlock::iterator nextIt = termIt;
     unsigned op = termIt->getOpcode();
     bool isJmp = (op == X86::JMP_1) or (op == X86::JMP_4);
     bool isJcc = (op == X86::JCC_1) or (op == X86::JCC_4);
@@ -103,32 +119,36 @@ bool Jcc2IretPass::run(MachineBasicBlock &MBB) {
     X86::CondCode CC = X86::COND_INVALID;
 
     if(isJcc) {
-      ++nextIt;
-      unsigned next_op = nextIt->getOpcode();
-      isJcc &= (next_op == X86::JMP_1) or (next_op == X86::JMP_4);
       CC = X86::getCondFromBranch(*termIt);
       isJcc &= (CC != X86::COND_INVALID);
+      isJcc &= (MBB.succ_size() == 2);
     }
+    isJcc = false;
     
     if(isJcc) {
       /* target of conditional branch */
       MachineBasicBlock *TBB = termIt->getOperand(0).getMBB();
+      MachineBasicBlock *NTBB = nullptr;
+
+      for (MachineBasicBlock *SuccMBB : MBB.successors()) {
+	if(SuccMBB != TBB) {
+	  NTBB = SuccMBB;
+	}
+      }
+      /* this should never happen ... */
+      if(NTBB==nullptr) {
+	llvm::errs() << "couldn't find a not taken successor block..\n";
+	break;
+      }
+      //nextIt->getOperand(0).getMBB();
       /* fall-thru branch */
-      MachineBasicBlock *NTBB = nextIt->getOperand(0).getMBB();
+      
       TBB->setHasAddressTaken();
       TBB->setLabelMustBeEmitted();
       NTBB->setHasAddressTaken();
       NTBB->setLabelMustBeEmitted();
 
-      unsigned reg = X86::R14;
-      unsigned rsp = X86::R15;
-
-      addRegOffset(BuildMI(MBB,termIt, DebugLoc(), TII->get(X86::MOV64mr)),X86::RSP, false, -48)
-	.addReg(X86::R14);
-
-      addRegOffset(BuildMI(MBB,termIt, DebugLoc(), TII->get(X86::MOV64mr)),X86::RSP, false, -56)
-	.addReg(X86::R15);
-
+      saveR14R15(MBB,termIt);
             
       /* save initial rsp pointer */
       BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::MOV64rr))
@@ -176,9 +196,7 @@ bool Jcc2IretPass::run(MachineBasicBlock &MBB) {
 	.addReg(reg, RegState::Kill);
 
 
-      addRegOffset(BuildMI(MBB,termIt, DebugLoc(), TII->get(X86::MOV64rm), X86::R14),X86::RSP, false, 0);
-      addRegOffset(BuildMI(MBB,termIt, DebugLoc(), TII->get(X86::MOV64rm), X86::R15),X86::RSP, false, -8);
-      
+      restoreR14R15(MBB, termIt);
       
       BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::IRET64));
       termIt = MBB.erase(termIt);
@@ -191,16 +209,10 @@ bool Jcc2IretPass::run(MachineBasicBlock &MBB) {
       MachineBasicBlock *S = termIt->getOperand(0).getMBB();
       S->setHasAddressTaken();
       S->setLabelMustBeEmitted();
-      
-      unsigned reg = X86::R14;
-      unsigned rsp = X86::R15;
 
-      addRegOffset(BuildMI(MBB,termIt, DebugLoc(), TII->get(X86::MOV64mr)),X86::RSP, false, -48)
-	.addReg(X86::R14);
+      //BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::INT3));
 
-      addRegOffset(BuildMI(MBB,termIt, DebugLoc(), TII->get(X86::MOV64mr)),X86::RSP, false, -56)
-	.addReg(X86::R15);
-      
+      saveR14R15(MBB,termIt);
       
       /* save initial rsp pointer */
       BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::MOV64rr))
@@ -237,13 +249,14 @@ bool Jcc2IretPass::run(MachineBasicBlock &MBB) {
 	.addReg(reg, RegState::Kill);
 
 
-      addRegOffset(BuildMI(MBB,termIt, DebugLoc(), TII->get(X86::MOV64rm), X86::R14),X86::RSP, false, 0);
-      addRegOffset(BuildMI(MBB,termIt, DebugLoc(), TII->get(X86::MOV64rm), X86::R15),X86::RSP, false, -8);
-
+      //BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::PAUSE));
+      
+      restoreR14R15(MBB, termIt);
       
       BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::IRET64));
 
-      MBB.erase(termIt);
+      //llvm::errs() << MBB << "\n";
+      //MBB.erase(termIt);
       changed = true;
       
       break;
