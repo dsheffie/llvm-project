@@ -123,7 +123,7 @@ bool Jcc2IretPass::run(MachineBasicBlock &MBB) {
       isJcc &= (CC != X86::COND_INVALID);
       isJcc &= (MBB.succ_size() == 2);
     }
-    isJcc = false;
+    //isJcc = false;
     
     if(isJcc) {
       /* target of conditional branch */
@@ -140,8 +140,15 @@ bool Jcc2IretPass::run(MachineBasicBlock &MBB) {
 	llvm::errs() << "couldn't find a not taken successor block..\n";
 	break;
       }
-      //nextIt->getOperand(0).getMBB();
-      /* fall-thru branch */
+
+      llvm::errs() << "current BB\n";
+      llvm::errs() << MBB << "\n";
+      llvm::errs() << "taken TBB\n";      
+      llvm::errs() << *TBB << "\n";
+      llvm::errs() << "not taken BB\n";      
+      llvm::errs() << *NTBB << "\n";
+
+
       
       TBB->setHasAddressTaken();
       TBB->setLabelMustBeEmitted();
@@ -199,9 +206,11 @@ bool Jcc2IretPass::run(MachineBasicBlock &MBB) {
       restoreR14R15(MBB, termIt);
       
       BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::IRET64));
-      termIt = MBB.erase(termIt);
-      //erase jump
-      //MBB.erase(termIt);
+      while(termIt != MBB.end()) {
+	termIt = MBB.erase(termIt);	
+      }
+      llvm::errs() << "after:\n";
+      llvm::errs() << MBB << "\n";
       changed = true;
       break;
     }
@@ -209,8 +218,6 @@ bool Jcc2IretPass::run(MachineBasicBlock &MBB) {
       MachineBasicBlock *S = termIt->getOperand(0).getMBB();
       S->setHasAddressTaken();
       S->setLabelMustBeEmitted();
-
-      //BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::INT3));
 
       saveR14R15(MBB,termIt);
       
@@ -255,8 +262,9 @@ bool Jcc2IretPass::run(MachineBasicBlock &MBB) {
       
       BuildMI(MBB, termIt, DebugLoc(), TII->get(X86::IRET64));
 
+      
       //llvm::errs() << MBB << "\n";
-      //MBB.erase(termIt);
+      MBB.erase(termIt);
       changed = true;
       
       break;
