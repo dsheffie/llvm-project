@@ -83,6 +83,9 @@ class X86Subtarget final : public X86GenSubtargetInfo {
   /// True if the processor supports X87 instructions.
   bool HasX87 = false;
 
+  /// True if thie processor supports CISCy instructions
+  bool HasCISC = false;
+  
   /// True if the processor supports CMPXCHG8B.
   bool HasCmpxchg8b = false;
 
@@ -609,6 +612,7 @@ public:
   void setPICStyle(PICStyles::Style Style)  { PICStyle = Style; }
 
   bool hasX87() const { return HasX87; }
+  bool hasCISC() const { return HasCISC; }  
   bool hasCmpxchg8b() const { return HasCmpxchg8b; }
   bool hasNOPL() const { return HasNOPL; }
   // SSE codegen depends on cmovs, and all SSE1+ processors support them.

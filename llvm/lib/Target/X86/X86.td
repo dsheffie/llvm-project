@@ -33,6 +33,9 @@ def Mode16Bit : SubtargetFeature<"16bit-mode", "In16BitMode", "true",
 def FeatureX87     : SubtargetFeature<"x87","HasX87", "true",
                                       "Enable X87 float instructions">;
 
+def FeatureCISC    : SubtargetFeature<"cisc", "HasCISC", "true",
+                                       "Has CISCy features">;
+
 def FeatureNOPL    : SubtargetFeature<"nopl", "HasNOPL", "true",
                                       "Enable NOPL instruction">;
 

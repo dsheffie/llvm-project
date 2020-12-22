@@ -1864,29 +1864,29 @@ let Predicates = [HasBMI2] in {
   def : Pat<(sra (loadi32 addr:$src1), (shiftMask32 GR8:$src2)),
             (SARX32rm addr:$src1,
                       (INSERT_SUBREG
-                        (i32 (IMPLICIT_DEF)), GR8:$src2, sub_8bit))>;
+                        (i32 (IMPLICIT_DEF)), GR8:$src2, sub_8bit))> , Requires<[HasCISC]>;
   def : Pat<(sra (loadi64 addr:$src1), (shiftMask64 GR8:$src2)),
             (SARX64rm addr:$src1,
                       (INSERT_SUBREG
-                        (i64 (IMPLICIT_DEF)), GR8:$src2, sub_8bit))>;
+                        (i64 (IMPLICIT_DEF)), GR8:$src2, sub_8bit))>, Requires<[HasCISC]>;
 
   def : Pat<(srl (loadi32 addr:$src1), (shiftMask32 GR8:$src2)),
             (SHRX32rm addr:$src1,
                       (INSERT_SUBREG
-                        (i32 (IMPLICIT_DEF)), GR8:$src2, sub_8bit))>;
+                        (i32 (IMPLICIT_DEF)), GR8:$src2, sub_8bit))>, Requires<[HasCISC]>;
   def : Pat<(srl (loadi64 addr:$src1), (shiftMask64 GR8:$src2)),
             (SHRX64rm addr:$src1,
                       (INSERT_SUBREG
-                        (i64 (IMPLICIT_DEF)), GR8:$src2, sub_8bit))>;
+                        (i64 (IMPLICIT_DEF)), GR8:$src2, sub_8bit))>, Requires<[HasCISC]>;
 
   def : Pat<(shl (loadi32 addr:$src1), (shiftMask32 GR8:$src2)),
             (SHLX32rm addr:$src1,
                       (INSERT_SUBREG
-                        (i32 (IMPLICIT_DEF)), GR8:$src2, sub_8bit))>;
+                        (i32 (IMPLICIT_DEF)), GR8:$src2, sub_8bit))>, Requires<[HasCISC]>;
   def : Pat<(shl (loadi64 addr:$src1), (shiftMask64 GR8:$src2)),
             (SHLX64rm addr:$src1,
                       (INSERT_SUBREG
-                        (i64 (IMPLICIT_DEF)), GR8:$src2, sub_8bit))>;
+                        (i64 (IMPLICIT_DEF)), GR8:$src2, sub_8bit))>, Requires<[HasCISC]>;
 }
 
 // Use BTR/BTS/BTC for clearing/setting/toggling a bit in a variable location.
@@ -1931,13 +1931,13 @@ def : Pat<(add GR64:$src1, GR64:$src2), (ADD64rr GR64:$src1, GR64:$src2)>;
 
 // add reg, mem
 def : Pat<(add GR8:$src1, (loadi8 addr:$src2)),
-          (ADD8rm GR8:$src1, addr:$src2)>;
+          (ADD8rm GR8:$src1, addr:$src2)>, Requires<[HasCISC]>;
 def : Pat<(add GR16:$src1, (loadi16 addr:$src2)),
-          (ADD16rm GR16:$src1, addr:$src2)>;
+          (ADD16rm GR16:$src1, addr:$src2)>, Requires<[HasCISC]>;
 def : Pat<(add GR32:$src1, (loadi32 addr:$src2)),
-          (ADD32rm GR32:$src1, addr:$src2)>;
+          (ADD32rm GR32:$src1, addr:$src2)>, Requires<[HasCISC]>;
 def : Pat<(add GR64:$src1, (loadi64 addr:$src2)),
-          (ADD64rm GR64:$src1, addr:$src2)>;
+          (ADD64rm GR64:$src1, addr:$src2)>, Requires<[HasCISC]>;
 
 // add reg, imm
 def : Pat<(add GR8 :$src1, imm:$src2), (ADD8ri  GR8:$src1 , imm:$src2)>;
@@ -1960,13 +1960,13 @@ def : Pat<(sub GR64:$src1, GR64:$src2), (SUB64rr GR64:$src1, GR64:$src2)>;
 
 // sub reg, mem
 def : Pat<(sub GR8:$src1, (loadi8 addr:$src2)),
-          (SUB8rm GR8:$src1, addr:$src2)>;
+          (SUB8rm GR8:$src1, addr:$src2)>, Requires<[HasCISC]>;
 def : Pat<(sub GR16:$src1, (loadi16 addr:$src2)),
-          (SUB16rm GR16:$src1, addr:$src2)>;
+          (SUB16rm GR16:$src1, addr:$src2)>, Requires<[HasCISC]>;
 def : Pat<(sub GR32:$src1, (loadi32 addr:$src2)),
-          (SUB32rm GR32:$src1, addr:$src2)>;
+          (SUB32rm GR32:$src1, addr:$src2)>, Requires<[HasCISC]>;
 def : Pat<(sub GR64:$src1, (loadi64 addr:$src2)),
-          (SUB64rm GR64:$src1, addr:$src2)>;
+          (SUB64rm GR64:$src1, addr:$src2)>, Requires<[HasCISC]>;
 
 // sub reg, imm
 def : Pat<(sub GR8:$src1, imm:$src2),
@@ -2000,11 +2000,11 @@ def : Pat<(mul GR64:$src1, GR64:$src2),
 
 // mul reg, mem
 def : Pat<(mul GR16:$src1, (loadi16 addr:$src2)),
-          (IMUL16rm GR16:$src1, addr:$src2)>;
+          (IMUL16rm GR16:$src1, addr:$src2)>, Requires<[HasCISC]>;
 def : Pat<(mul GR32:$src1, (loadi32 addr:$src2)),
-          (IMUL32rm GR32:$src1, addr:$src2)>;
+          (IMUL32rm GR32:$src1, addr:$src2)> , Requires<[HasCISC]>;
 def : Pat<(mul GR64:$src1, (loadi64 addr:$src2)),
-          (IMUL64rm GR64:$src1, addr:$src2)>;
+          (IMUL64rm GR64:$src1, addr:$src2)>, Requires<[HasCISC]>;
 
 // mul reg, imm
 def : Pat<(mul GR16:$src1, imm:$src2),
@@ -2022,17 +2022,17 @@ def : Pat<(mul GR64:$src1, i64immSExt32:$src2),
 
 // reg = mul mem, imm
 def : Pat<(mul (loadi16 addr:$src1), imm:$src2),
-          (IMUL16rmi addr:$src1, imm:$src2)>;
+          (IMUL16rmi addr:$src1, imm:$src2)> , Requires<[HasCISC]>;
 def : Pat<(mul (loadi32 addr:$src1), imm:$src2),
-          (IMUL32rmi addr:$src1, imm:$src2)>;
+          (IMUL32rmi addr:$src1, imm:$src2)>, Requires<[HasCISC]>;
 def : Pat<(mul (loadi16 addr:$src1), i16immSExt8:$src2),
-          (IMUL16rmi8 addr:$src1, i16immSExt8:$src2)>;
+          (IMUL16rmi8 addr:$src1, i16immSExt8:$src2)> , Requires<[HasCISC]>;
 def : Pat<(mul (loadi32 addr:$src1), i32immSExt8:$src2),
-          (IMUL32rmi8 addr:$src1, i32immSExt8:$src2)>;
+          (IMUL32rmi8 addr:$src1, i32immSExt8:$src2)> , Requires<[HasCISC]>;
 def : Pat<(mul (loadi64 addr:$src1), i64immSExt8:$src2),
-          (IMUL64rmi8 addr:$src1, i64immSExt8:$src2)>;
+          (IMUL64rmi8 addr:$src1, i64immSExt8:$src2)> , Requires<[HasCISC]>;
 def : Pat<(mul (loadi64 addr:$src1), i64immSExt32:$src2),
-          (IMUL64rmi32 addr:$src1, i64immSExt32:$src2)>;
+          (IMUL64rmi32 addr:$src1, i64immSExt32:$src2)>, Requires<[HasCISC]>;
 
 // Increment/Decrement reg.
 // Do not make INC/DEC if it is slow
@@ -2064,13 +2064,13 @@ def : Pat<(or GR64:$src1, GR64:$src2), (OR64rr GR64:$src1, GR64:$src2)>;
 
 // or reg/mem
 def : Pat<(or GR8:$src1, (loadi8 addr:$src2)),
-          (OR8rm GR8:$src1, addr:$src2)>;
+          (OR8rm GR8:$src1, addr:$src2)> , Requires<[HasCISC]>;
 def : Pat<(or GR16:$src1, (loadi16 addr:$src2)),
-          (OR16rm GR16:$src1, addr:$src2)>;
+          (OR16rm GR16:$src1, addr:$src2)> , Requires<[HasCISC]>;
 def : Pat<(or GR32:$src1, (loadi32 addr:$src2)),
-          (OR32rm GR32:$src1, addr:$src2)>;
+          (OR32rm GR32:$src1, addr:$src2)> , Requires<[HasCISC]>;
 def : Pat<(or GR64:$src1, (loadi64 addr:$src2)),
-          (OR64rm GR64:$src1, addr:$src2)>;
+          (OR64rm GR64:$src1, addr:$src2)> , Requires<[HasCISC]>;
 
 // or reg/imm
 def : Pat<(or GR8:$src1 , imm:$src2), (OR8ri  GR8 :$src1, imm:$src2)>;
@@ -2093,13 +2093,13 @@ def : Pat<(xor GR64:$src1, GR64:$src2), (XOR64rr GR64:$src1, GR64:$src2)>;
 
 // xor reg/mem
 def : Pat<(xor GR8:$src1, (loadi8 addr:$src2)),
-          (XOR8rm GR8:$src1, addr:$src2)>;
+          (XOR8rm GR8:$src1, addr:$src2)> , Requires<[HasCISC]>;
 def : Pat<(xor GR16:$src1, (loadi16 addr:$src2)),
-          (XOR16rm GR16:$src1, addr:$src2)>;
+          (XOR16rm GR16:$src1, addr:$src2)> , Requires<[HasCISC]>;
 def : Pat<(xor GR32:$src1, (loadi32 addr:$src2)),
-          (XOR32rm GR32:$src1, addr:$src2)>;
+          (XOR32rm GR32:$src1, addr:$src2)> , Requires<[HasCISC]>;
 def : Pat<(xor GR64:$src1, (loadi64 addr:$src2)),
-          (XOR64rm GR64:$src1, addr:$src2)>;
+          (XOR64rm GR64:$src1, addr:$src2)> , Requires<[HasCISC]>;
 
 // xor reg/imm
 def : Pat<(xor GR8:$src1, imm:$src2),
@@ -2125,13 +2125,13 @@ def : Pat<(and GR64:$src1, GR64:$src2), (AND64rr GR64:$src1, GR64:$src2)>;
 
 // and reg/mem
 def : Pat<(and GR8:$src1, (loadi8 addr:$src2)),
-          (AND8rm GR8:$src1, addr:$src2)>;
+          (AND8rm GR8:$src1, addr:$src2)> , Requires<[HasCISC]>;
 def : Pat<(and GR16:$src1, (loadi16 addr:$src2)),
-          (AND16rm GR16:$src1, addr:$src2)>;
+          (AND16rm GR16:$src1, addr:$src2)> , Requires<[HasCISC]>;
 def : Pat<(and GR32:$src1, (loadi32 addr:$src2)),
-          (AND32rm GR32:$src1, addr:$src2)>;
+          (AND32rm GR32:$src1, addr:$src2)> , Requires<[HasCISC]>;
 def : Pat<(and GR64:$src1, (loadi64 addr:$src2)),
-          (AND64rm GR64:$src1, addr:$src2)>;
+          (AND64rm GR64:$src1, addr:$src2)> , Requires<[HasCISC]>;
 
 // and reg/imm
 def : Pat<(and GR8:$src1, imm:$src2),
@@ -2153,9 +2153,9 @@ def : Pat<(and GR64:$src1, i64immSExt32:$src2),
 def : Pat<(cttz_zero_undef GR16:$src), (BSF16rr GR16:$src)>;
 def : Pat<(cttz_zero_undef GR32:$src), (BSF32rr GR32:$src)>;
 def : Pat<(cttz_zero_undef GR64:$src), (BSF64rr GR64:$src)>;
-def : Pat<(cttz_zero_undef (loadi16 addr:$src)), (BSF16rm addr:$src)>;
-def : Pat<(cttz_zero_undef (loadi32 addr:$src)), (BSF32rm addr:$src)>;
-def : Pat<(cttz_zero_undef (loadi64 addr:$src)), (BSF64rm addr:$src)>;
+def : Pat<(cttz_zero_undef (loadi16 addr:$src)), (BSF16rm addr:$src)>, Requires<[HasCISC]>;
+def : Pat<(cttz_zero_undef (loadi32 addr:$src)), (BSF32rm addr:$src)>, Requires<[HasCISC]>;
+def : Pat<(cttz_zero_undef (loadi64 addr:$src)), (BSF64rm addr:$src)>, Requires<[HasCISC]>;
 
 // When HasMOVBE is enabled it is possible to get a non-legalized
 // register-register 16 bit bswap. This maps it to a ROL instruction.

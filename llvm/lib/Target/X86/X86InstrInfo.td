@@ -872,6 +872,7 @@ def NoCMov       : Predicate<"!Subtarget->hasCMov()">;
 def HasMMX       : Predicate<"Subtarget->hasMMX()">;
 def Has3DNow     : Predicate<"Subtarget->has3DNow()">;
 def Has3DNowA    : Predicate<"Subtarget->has3DNowA()">;
+def HasCISC      : Predicate<"Subtarget->hasCISC()">;
 def HasSSE1      : Predicate<"Subtarget->hasSSE1()">;
 def UseSSE1      : Predicate<"Subtarget->hasSSE1() && !Subtarget->hasAVX()">;
 def HasSSE2      : Predicate<"Subtarget->hasSSE2()">;
