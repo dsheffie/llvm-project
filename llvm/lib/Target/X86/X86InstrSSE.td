@@ -35,7 +35,7 @@ let isCodeGenOnly = 1 in {
            !strconcat(OpcodeStr, "\t{$src2, $dst|$dst, $src2}"),
            !strconcat(OpcodeStr, "\t{$src2, $src1, $dst|$dst, $src1, $src2}")),
        [(set RC:$dst, (OpNode RC:$src1, (load addr:$src2)))], d>,
-       Sched<[sched.Folded, sched.ReadAfterFold]>;
+       Sched<[sched.Folded, sched.ReadAfterFold]>, Requires<[HasCISC]>;
 }
 }
 
@@ -58,7 +58,7 @@ let hasSideEffects = 0 in {
            !strconcat(asm, "\t{$src2, $dst|$dst, $src2}"),
            !strconcat(asm, "\t{$src2, $src1, $dst|$dst, $src1, $src2}")),
        [(set RC:$dst, (VT (OpNode RC:$src1, (mem_frags addr:$src2))))], d>,
-       Sched<[sched.Folded, sched.ReadAfterFold]>;
+       Sched<[sched.Folded, sched.ReadAfterFold]>, Requires<[HasCISC]>;
 }
 }
 
@@ -82,7 +82,7 @@ multiclass sse12_fp_packed<bits<8> opc, string OpcodeStr, SDNode OpNode,
            !strconcat(OpcodeStr, "\t{$src2, $src1, $dst|$dst, $src1, $src2}")),
        [(set RC:$dst, (OpNode RC:$src1, (mem_frag addr:$src2)))],
           d>,
-       Sched<[sched.Folded, sched.ReadAfterFold]>;
+       Sched<[sched.Folded, sched.ReadAfterFold]>, Requires<[HasCISC]>;
 }
 
 /// sse12_fp_packed_logical_rm - SSE 1 & 2 packed instructions class
@@ -104,7 +104,7 @@ multiclass sse12_fp_packed_logical_rm<bits<8> opc, RegisterClass RC, Domain d,
            !strconcat(OpcodeStr, "\t{$src2, $dst|$dst, $src2}"),
            !strconcat(OpcodeStr, "\t{$src2, $src1, $dst|$dst, $src1, $src2}")),
        pat_rm, d>,
-       Sched<[sched.Folded, sched.ReadAfterFold]>;
+       Sched<[sched.Folded, sched.ReadAfterFold]>, Requires<[HasCISC]>;
 }
 
 
@@ -1796,7 +1796,7 @@ multiclass sse12_cmp_scalar<RegisterClass RC, X86MemOperand x86memop,
                     (ins VR128:$src1, memop:$src2, u8imm:$cc), asm,
                     [(set VR128:$dst, (OpNode (VT VR128:$src1),
                                               (mem_frags addr:$src2), timm:$cc))]>,
-           Sched<[sched.Folded, sched.ReadAfterFold]>, SIMD_EXC;
+           Sched<[sched.Folded, sched.ReadAfterFold]>, SIMD_EXC, Requires<[HasCISC]>;
 
   let isCodeGenOnly = 1 in {
     let isCommutable = 1 in
@@ -1808,7 +1808,8 @@ multiclass sse12_cmp_scalar<RegisterClass RC, X86MemOperand x86memop,
                   (outs RC:$dst), (ins RC:$src1, x86memop:$src2, u8imm:$cc), asm,
                   [(set RC:$dst, (OpNode RC:$src1,
                                          (ld_frag addr:$src2), timm:$cc))]>,
-                  Sched<[sched.Folded, sched.ReadAfterFold]>, SIMD_EXC;
+                  Sched<[sched.Folded, sched.ReadAfterFold]>, SIMD_EXC,
+		  Requires<[HasCISC]>;
   }
 }
 
@@ -1930,7 +1931,7 @@ multiclass sse12_cmp_packed<RegisterClass RC, X86MemOperand x86memop,
              (outs RC:$dst), (ins RC:$src1, x86memop:$src2, u8imm:$cc), asm,
              [(set RC:$dst,
                (VT (X86any_cmpp RC:$src1, (ld_frag addr:$src2), timm:$cc)))], d>,
-            Sched<[sched.Folded, sched.ReadAfterFold]>, SIMD_EXC;
+            Sched<[sched.Folded, sched.ReadAfterFold]>, SIMD_EXC, Requires<[HasCISC]>;
 }
 
 defm VCMPPS : sse12_cmp_packed<VR128, f128mem, v4f32,
