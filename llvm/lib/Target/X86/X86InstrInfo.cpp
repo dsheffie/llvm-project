@@ -4382,6 +4382,11 @@ MachineInstr *X86InstrInfo::optimizeLoadInstr(MachineInstr &MI,
                                               const MachineRegisterInfo *MRI,
                                               Register &FoldAsLoadDefReg,
                                               MachineInstr *&DefMI) const {
+  MachineFunction &MF = *((MI.getParent())->getParent());
+  if(not(Subtarget.hasCISC())) {
+    return nullptr;
+  }
+  
   // Check whether we can move DefMI here.
   DefMI = MRI->getVRegDef(FoldAsLoadDefReg);
   assert(DefMI);
