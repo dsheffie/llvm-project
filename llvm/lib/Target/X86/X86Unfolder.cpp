@@ -78,17 +78,35 @@ char X86UnfoldPass::ID = 0;
 
 bool X86UnfoldPass::run(MachineBasicBlock &MBB) {
   bool changed = false;
-  return changed;
-  
+ retry:    
   auto It = MBB.begin();
-  
   while(It != MBB.end()) {
     MachineInstr &MI = *It;
     //check if the instruction may load
     unsigned op = MI.getOpcode();
+    /* if RIP is a source, skip */
+    bool usesRIP = false;
+    for(int OpIdx = 1, NumOps = MI.getNumOperands(); OpIdx < NumOps; ++OpIdx) {
+      MachineOperand &O = MI.getOperand(OpIdx);
+      if(O.isReg()) {
+	usesRIP |= (O.getReg() == X86::RIP);
+      }
+    }
+    if(usesRIP) {
+      ++It;
+      continue;
+    }
 #if 1
     switch(op)
       {
+      case X86::SETCCm:
+      case X86::CMP64mi8:
+      case X86::MOVDI2PDIrm:
+
+
+      case X86::MOV8mr_NOREX:
+      case X86::MOVPDI2DImr:
+	
       case X86::MOVSX32rm8:	
       case X86::MOVSX32rm16:
       case X86::MOVZX32rm8:
@@ -178,11 +196,12 @@ bool X86UnfoldPass::run(MachineBasicBlock &MBB) {
     assert(Unfolded && "Must unfold");
     llvm::errs() << "replacing : " << *It << " with \n";
     for (auto *NewMI : NewMIs) {
-      It = MBB.insert(It, NewMI);
+      It = MBB.insertAfter(It, NewMI);
       llvm::errs() << "\t" << *It << "\n";
     }
     MI.eraseFromParent();
-
+    //llvm::errs() << MBB;
+    goto retry;
   }
   
   return changed;
@@ -200,8 +219,13 @@ bool X86UnfoldPass::runOnMachineFunction(MachineFunction &MF) {
   }
   bool Changed = false;
   for (MachineBasicBlock &MBB : MF) {
-    Changed |= run(MBB);
+    bool C = run(MBB);
+    //if(C) {
+    //llvm::errs() << MBB;
+    //}
+    Changed |= C;
   }
+
   return Changed;
 }
 
