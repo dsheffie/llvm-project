@@ -100,6 +100,9 @@ FunctionPass *createX86ExpandPseudoPass();
 /// This pass converts X86 cmov instructions into branch when profitable.
 FunctionPass *createX86CmovConverterPass();
 
+/// This pass unfolds instructions
+FunctionPass *createX86UnfoldPass();
+  
 /// Return a Machine IR pass that selectively replaces
 /// certain byte and word instructions by equivalent 32 bit instructions,
 /// in order to eliminate partial register usage, false dependences on
@@ -142,6 +145,7 @@ FunctionPass *createX86LoadValueInjectionRetHardeningPass();
 FunctionPass *createX86SpeculativeLoadHardeningPass();
 FunctionPass *createX86SpeculativeExecutionSideEffectSuppression();
 
+
 void initializeEvexToVexInstPassPass(PassRegistry &);
 void initializeFixupBWInstPassPass(PassRegistry &);
 void initializeFixupLEAPassPass(PassRegistry &);
@@ -151,6 +155,8 @@ void initializeX86AvoidSFBPassPass(PassRegistry &);
 void initializeX86AvoidTrailingCallPassPass(PassRegistry &);
 void initializeX86CallFrameOptimizationPass(PassRegistry &);
 void initializeX86CmovConverterPassPass(PassRegistry &);
+void initializeX86UnfoldPassPass(PassRegistry &);  
+  
 void initializeX86DomainReassignmentPass(PassRegistry &);
 void initializeX86ExecutionDomainFixPass(PassRegistry &);
 void initializeX86ExpandPseudoPass(PassRegistry &);
