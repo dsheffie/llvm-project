@@ -84,26 +84,39 @@ bool X86UnfoldPass::run(MachineBasicBlock &MBB) {
     MachineInstr &MI = *It;
     //check if the instruction may load
     unsigned op = MI.getOpcode();
-    /* if RIP is a source, skip */
-    bool usesRIP = false;
-    for(int OpIdx = 1, NumOps = MI.getNumOperands(); OpIdx < NumOps; ++OpIdx) {
-      MachineOperand &O = MI.getOperand(OpIdx);
-      if(O.isReg()) {
-	usesRIP |= (O.getReg() == X86::RIP);
+
+    bool gotRIP = false, gotStack = false;
+    for(auto &U : MI.uses()) {
+      if(U.getType() ==  MachineOperand::MO_FrameIndex) {
+	gotStack = true;
+      }
+      
+      if(U.isReg()) {
+	if(U.getReg() == X86::RIP) {
+	  gotRIP = true;
+	}
       }
     }
-    if(usesRIP) {
+
+    if((MI.mayLoad() && MI.mayStore()) || gotRIP || gotStack) {
       ++It;
       continue;
     }
+
+    
 #if 1
     switch(op)
       {
       case X86::SETCCm:
-      case X86::CMP64mi8:
+	
       case X86::MOVDI2PDIrm:
 
+      case X86::VMOVDQUrm:	
+      case X86::VMOVDQArm:
+      case X86::VMOVDQAmr:
+      case X86::VMOVDQUmr:
 
+	
       case X86::MOV8mr_NOREX:
       case X86::MOVPDI2DImr:
 	
@@ -201,7 +214,7 @@ bool X86UnfoldPass::run(MachineBasicBlock &MBB) {
     }
     MI.eraseFromParent();
     //llvm::errs() << MBB;
-    goto retry;
+    //goto retry;
   }
   
   return changed;

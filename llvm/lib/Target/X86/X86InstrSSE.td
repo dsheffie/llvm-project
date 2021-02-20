@@ -823,7 +823,7 @@ multiclass sse12_cvt_s<bits<8> opc, RegisterClass SrcRC, RegisterClass DstRC,
   def rm : SI<opc, MRMSrcMem, (outs DstRC:$dst), (ins x86memop:$src),
               mem#"\t{$src, $dst|$dst, $src}",
               [(set DstRC:$dst, (OpNode (ld_frag addr:$src)))]>,
-              Sched<[sched.Folded]>;
+              Sched<[sched.Folded]>, Requires<[HasCISC]>;
   }
 }
 
@@ -853,7 +853,7 @@ let hasSideEffects = 0, Predicates = [UseAVX], ExeDomain = d in {
   def rm : SI<opc, MRMSrcMem, (outs DstRC:$dst),
               (ins DstRC:$src1, x86memop:$src),
               asm#"{"#mem#"}\t{$src, $src1, $dst|$dst, $src1, $src}", []>,
-           Sched<[sched.Folded, sched.ReadAfterFold]>;
+           Sched<[sched.Folded, sched.ReadAfterFold]>, Requires<[HasCISC]>;
 } // hasSideEffects = 0
 }
 
@@ -1192,6 +1192,7 @@ defm VCVTDQ2PS   : sse12_cvt_p<0x5B, VR128, i128mem, v4f32, v4i32, load,
                                "vcvtdq2ps\t{$src, $dst|$dst, $src}",
                                SSEPackedSingle, WriteCvtI2PS>,
                                PS, VEX, Requires<[HasAVX, NoVLX]>, VEX_WIG;
+			       
 defm VCVTDQ2PSY  : sse12_cvt_p<0x5B, VR256, i256mem, v8f32, v8i32, load,
                                "vcvtdq2ps\t{$src, $dst|$dst, $src}",
                                SSEPackedSingle, WriteCvtI2PSY>,
@@ -1850,7 +1851,7 @@ multiclass sse12_ord_cmp<bits<8> opc, RegisterClass RC, SDNode OpNode,
                      !strconcat(OpcodeStr, "\t{$src2, $src1|$src1, $src2}"),
                      [(set EFLAGS, (OpNode (vt RC:$src1),
                                            (ld_frag addr:$src2)))]>,
-          Sched<[sched.Folded, sched.ReadAfterFold]>, SIMD_EXC;
+          Sched<[sched.Folded, sched.ReadAfterFold]>, SIMD_EXC, Requires<[HasCISC]>;
 }
 }
 
