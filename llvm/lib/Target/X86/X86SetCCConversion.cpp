@@ -87,11 +87,24 @@ bool X86SetCCConverterPass::runOnMachineFunction(MachineFunction &MF) {
   TII = STI.getInstrInfo();
   TRI = STI.getRegisterInfo();
 
+ retry:
+  for(MachineBasicBlock &MBB : MF) {
+    for(MachineInstr &MI : MBB) {
+      X86::CondCode CC = X86::getCondFromSETCC(MI);
+      if(CC != X86::COND_INVALID) {
+	llvm::errs() << MI << "\n";
+	convertSetCCInstsToBranches(MI);
+	Changed = true;
+	goto retry;
+      }
+    }
+  }
+  
   //convertCmovInstsToBranches(Group);
   //}
-
   return Changed;
 }
+
 
 static bool checkEFLAGSLive(MachineInstr *MI) {
   if (MI->killsRegister(X86::EFLAGS))
@@ -119,51 +132,32 @@ static bool checkEFLAGSLive(MachineInstr *MI) {
   return false;
 }
 
-
 void X86SetCCConverterPass::convertSetCCInstsToBranches(MachineInstr & MI) const {
-  // To convert a CMOVcc instruction, we actually have to insert the diamond
-  // control-flow pattern.  The incoming instruction knows the destination vreg
-  // to set, the condition code register to branch on, the true/false values to
-  // select between, and a branch opcode to use.
 
   // Before
   // -----
   // MBB:
   //   cond = cmp ...
-  //   v1 = CMOVge t1, f1, cond
-  //   v2 = CMOVlt t2, f2, cond
-  //   v3 = CMOVge v1, f3, cond
+  //   v1 = setcc cond
   //
   // After
   // -----
   // MBB:
   //   cond = cmp ...
+  //   c0 = 0
   //   jge %SinkMBB
   //
   // FalseMBB:
+  //   c1 = 1
   //   jmp %SinkMBB
   //
   // SinkMBB:
   //   %v1 = phi[%f1, %FalseMBB], [%t1, %MBB]
-  //   %v2 = phi[%t2, %FalseMBB], [%f2, %MBB] ; For CMOV with OppCC switch
-  //                                          ; true-value with false-value
-  //   %v3 = phi[%f3, %FalseMBB], [%t1, %MBB] ; Phi instruction cannot use
   //                                          ; previous Phi instruction result
-#if 0
-  MachineInstr &MI = *Group.front();
-  MachineInstr *LastCMOV = Group.back();
+
   DebugLoc DL = MI.getDebugLoc();
 
-  X86::CondCode CC = X86::CondCode(X86::getCondFromCMov(MI));
-  X86::CondCode OppCC = X86::GetOppositeBranchCondition(CC);
-  // Potentially swap the condition codes so that any memory operand to a CMOV
-  // is in the *false* position instead of the *true* position. We can invert
-  // any non-memory operand CMOV instructions to cope with this and we ensure
-  // memory operand CMOVs are only included with a single condition code.
-  if (llvm::any_of(Group, [&](MachineInstr *I) {
-        return I->mayLoad() && X86::getCondFromCMov(*I) == CC;
-      }))
-    std::swap(CC, OppCC);
+  X86::CondCode CC = X86::CondCode(X86::getCondFromSETCC(MI));
 
   MachineBasicBlock *MBB = MI.getParent();
   MachineFunction::iterator It = ++MBB->getIterator();
@@ -177,180 +171,52 @@ void X86SetCCConverterPass::convertSetCCInstsToBranches(MachineInstr & MI) const
 
   // If the EFLAGS register isn't dead in the terminator, then claim that it's
   // live into the sink and copy blocks.
-  if (checkEFLAGSLive(LastCMOV)) {
+  if (checkEFLAGSLive(&MI)) {
     FalseMBB->addLiveIn(X86::EFLAGS);
     SinkMBB->addLiveIn(X86::EFLAGS);
   }
 
   // Transfer the remainder of BB and its successor edges to SinkMBB.
   SinkMBB->splice(SinkMBB->begin(), MBB,
-                  std::next(MachineBasicBlock::iterator(LastCMOV)), MBB->end());
+                  std::next(MachineBasicBlock::iterator(MI)), MBB->end());
   SinkMBB->transferSuccessorsAndUpdatePHIs(MBB);
 
   // Add the false and sink blocks as its successors.
   MBB->addSuccessor(FalseMBB);
   MBB->addSuccessor(SinkMBB);
 
-  // Create the conditional branch instruction.
-  BuildMI(MBB, DL, TII->get(X86::JCC_1)).addMBB(SinkMBB).addImm(CC);
+  Register destReg = MI.getOperand(0).getReg();
+  Register zeroReg = MRI->createVirtualRegister(&X86::GR32RegClass);
+  Register oneReg = MRI->createVirtualRegister(&X86::GR32RegClass);
+  auto CIT = MachineBasicBlock::iterator(MI);
+  
+  BuildMI(*MBB, CIT, DL, TII->get(X86::MOV32r0), zeroReg);
+  BuildMI(*MBB, CIT, DL, TII->get(X86::JCC_1)).addMBB(SinkMBB).addImm(CC);
+  BuildMI(*MBB, CIT, DL, TII->get(X86::JMP_1)).addMBB(FalseMBB);
 
+  llvm::errs() << *MBB;
+
+  auto FIT = FalseMBB->begin();
+  BuildMI(*FalseMBB, FIT, DL, TII->get(X86::MOV32r1), oneReg);
+  BuildMI(*FalseMBB, FIT, DL, TII->get(X86::JMP_1)).addMBB(SinkMBB);
+
+  
   // Add the sink block to the false block successors.
   FalseMBB->addSuccessor(SinkMBB);
 
-  MachineInstrBuilder MIB;
-  MachineBasicBlock::iterator MIItBegin = MachineBasicBlock::iterator(MI);
-  MachineBasicBlock::iterator MIItEnd =
-      std::next(MachineBasicBlock::iterator(LastCMOV));
-  MachineBasicBlock::iterator FalseInsertionPoint = FalseMBB->begin();
-  MachineBasicBlock::iterator SinkInsertionPoint = SinkMBB->begin();
+  llvm::errs() << *FalseMBB;
 
-  // First we need to insert an explicit load on the false path for any memory
-  // operand. We also need to potentially do register rewriting here, but it is
-  // simpler as the memory operands are always on the false path so we can
-  // simply take that input, whatever it is.
-  DenseMap<unsigned, unsigned> FalseBBRegRewriteTable;
-  for (MachineBasicBlock::iterator MIIt = MIItBegin; MIIt != MIItEnd;) {
-    auto &MI = *MIIt++;
-    // Skip any CMOVs in this group which don't load from memory.
-    if (!MI.mayLoad()) {
-      // Remember the false-side register input.
-      Register FalseReg =
-          MI.getOperand(X86::getCondFromCMov(MI) == CC ? 1 : 2).getReg();
-      // Walk back through any intermediate cmovs referenced.
-      while (true) {
-        auto FRIt = FalseBBRegRewriteTable.find(FalseReg);
-        if (FRIt == FalseBBRegRewriteTable.end())
-          break;
-        FalseReg = FRIt->second;
-      }
-      FalseBBRegRewriteTable[MI.getOperand(0).getReg()] = FalseReg;
-      continue;
-    }
+  BuildMI(*SinkMBB, SinkMBB->begin(), DL, TII->get(X86::PHI), destReg)
+    .addReg(zeroReg)
+    .addMBB(FalseMBB)
+    .addReg(oneReg)
+    .addMBB(MBB);
 
-    // The condition must be the *opposite* of the one we've decided to branch
-    // on as the branch will go *around* the load and the load should happen
-    // when the CMOV condition is false.
-    assert(X86::getCondFromCMov(MI) == OppCC &&
-           "Can only handle memory-operand cmov instructions with a condition "
-           "opposite to the selected branch direction.");
-
-    // The goal is to rewrite the cmov from:
-    //
-    //   MBB:
-    //     %A = CMOVcc %B (tied), (mem)
-    //
-    // to
-    //
-    //   MBB:
-    //     %A = CMOVcc %B (tied), %C
-    //   FalseMBB:
-    //     %C = MOV (mem)
-    //
-    // Which will allow the next loop to rewrite the CMOV in terms of a PHI:
-    //
-    //   MBB:
-    //     JMP!cc SinkMBB
-    //   FalseMBB:
-    //     %C = MOV (mem)
-    //   SinkMBB:
-    //     %A = PHI [ %C, FalseMBB ], [ %B, MBB]
-
-    // Get a fresh register to use as the destination of the MOV.
-    const TargetRegisterClass *RC = MRI->getRegClass(MI.getOperand(0).getReg());
-    Register TmpReg = MRI->createVirtualRegister(RC);
-
-    SmallVector<MachineInstr *, 4> NewMIs;
-    bool Unfolded = TII->unfoldMemoryOperand(*MBB->getParent(), MI, TmpReg,
-                                             /*UnfoldLoad*/ true,
-                                             /*UnfoldStore*/ false, NewMIs);
-    (void)Unfolded;
-    assert(Unfolded && "Should never fail to unfold a loading cmov!");
-
-    // Move the new CMOV to just before the old one and reset any impacted
-    // iterator.
-    auto *NewCMOV = NewMIs.pop_back_val();
-    assert(X86::getCondFromCMov(*NewCMOV) == OppCC &&
-           "Last new instruction isn't the expected CMOV!");
-    LLVM_DEBUG(dbgs() << "\tRewritten cmov: "; NewCMOV->dump());
-    MBB->insert(MachineBasicBlock::iterator(MI), NewCMOV);
-    if (&*MIItBegin == &MI)
-      MIItBegin = MachineBasicBlock::iterator(NewCMOV);
-
-    // Sink whatever instructions were needed to produce the unfolded operand
-    // into the false block.
-    for (auto *NewMI : NewMIs) {
-      LLVM_DEBUG(dbgs() << "\tRewritten load instr: "; NewMI->dump());
-      FalseMBB->insert(FalseInsertionPoint, NewMI);
-      // Re-map any operands that are from other cmovs to the inputs for this block.
-      for (auto &MOp : NewMI->uses()) {
-        if (!MOp.isReg())
-          continue;
-        auto It = FalseBBRegRewriteTable.find(MOp.getReg());
-        if (It == FalseBBRegRewriteTable.end())
-          continue;
-
-        MOp.setReg(It->second);
-        // This might have been a kill when it referenced the cmov result, but
-        // it won't necessarily be once rewritten.
-        // FIXME: We could potentially improve this by tracking whether the
-        // operand to the cmov was also a kill, and then skipping the PHI node
-        // construction below.
-        MOp.setIsKill(false);
-      }
-    }
-    MBB->erase(MachineBasicBlock::iterator(MI),
-               std::next(MachineBasicBlock::iterator(MI)));
-
-    // Add this PHI to the rewrite table.
-    FalseBBRegRewriteTable[NewCMOV->getOperand(0).getReg()] = TmpReg;
-  }
-
-  // As we are creating the PHIs, we have to be careful if there is more than
-  // one.  Later CMOVs may reference the results of earlier CMOVs, but later
-  // PHIs have to reference the individual true/false inputs from earlier PHIs.
-  // That also means that PHI construction must work forward from earlier to
-  // later, and that the code must maintain a mapping from earlier PHI's
-  // destination registers, and the registers that went into the PHI.
-  DenseMap<unsigned, std::pair<unsigned, unsigned>> RegRewriteTable;
-
-  for (MachineBasicBlock::iterator MIIt = MIItBegin; MIIt != MIItEnd; ++MIIt) {
-    Register DestReg = MIIt->getOperand(0).getReg();
-    Register Op1Reg = MIIt->getOperand(1).getReg();
-    Register Op2Reg = MIIt->getOperand(2).getReg();
-
-    // If this CMOV we are processing is the opposite condition from the jump we
-    // generated, then we have to swap the operands for the PHI that is going to
-    // be generated.
-    if (X86::getCondFromCMov(*MIIt) == OppCC)
-      std::swap(Op1Reg, Op2Reg);
-
-    auto Op1Itr = RegRewriteTable.find(Op1Reg);
-    if (Op1Itr != RegRewriteTable.end())
-      Op1Reg = Op1Itr->second.first;
-
-    auto Op2Itr = RegRewriteTable.find(Op2Reg);
-    if (Op2Itr != RegRewriteTable.end())
-      Op2Reg = Op2Itr->second.second;
-
-    //  SinkMBB:
-    //   %Result = phi [ %FalseValue, FalseMBB ], [ %TrueValue, MBB ]
-    //  ...
-    MIB = BuildMI(*SinkMBB, SinkInsertionPoint, DL, TII->get(X86::PHI), DestReg)
-              .addReg(Op1Reg)
-              .addMBB(FalseMBB)
-              .addReg(Op2Reg)
-              .addMBB(MBB);
-    (void)MIB;
-    LLVM_DEBUG(dbgs() << "\tFrom: "; MIIt->dump());
-    LLVM_DEBUG(dbgs() << "\tTo: "; MIB->dump());
-
-    // Add this PHI to the rewrite table.
-    RegRewriteTable[DestReg] = std::make_pair(Op1Reg, Op2Reg);
-  }
-
+  llvm::errs() << *SinkMBB;
+  
   // Now remove the CMOV(s).
-  MBB->erase(MIItBegin, MIItEnd);
-#endif
+  MBB->erase(MI);
+  
 }
 
 INITIALIZE_PASS_BEGIN(X86SetCCConverterPass, DEBUG_TYPE, "X86 setcc Conversion",false, false)
