@@ -35,6 +35,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "X86InstrFoldTables.h"
 #include <algorithm>
 #include <cassert>
 #include <iterator>
@@ -48,6 +49,7 @@ using namespace llvm;
 //STATISTIC(NumOfCmovGroupCandidate, "Number of CMOV-group candidates");
 //STATISTIC(NumOfLoopCandidate, "Number of CMOV-conversion profitable loops");
 STATISTIC(NumOfRemovedSetCCs, "Number of removed SetCCs");
+STATISTIC(NumOfConvertedMemSetCCs, "Number of mem-dest SetCCs replaced");
 
 namespace {
 
@@ -87,16 +89,42 @@ bool X86SetCCConverterPass::runOnMachineFunction(MachineFunction &MF) {
   TII = STI.getInstrInfo();
   TRI = STI.getRegisterInfo();
 
- retry:
+  /*  first phase - convert any setcc with a memory dest to a register dest + store */
+ retry_mem:
+    for(MachineBasicBlock &MBB : MF) {
+      for(MachineInstr &MI : MBB) {
+	X86::CondCode CC = X86::getCondFromSETCC(MI);
+	if((CC != X86::COND_INVALID) && MI.mayStore()) {
+	  Register TmpReg = MRI->createVirtualRegister(&X86::GR8RegClass);
+	  SmallVector<MachineInstr *, 4> NewMIs;
+	  bool Unfolded = TII->unfoldMemoryOperand(*(MBB.getParent()), MI, TmpReg,
+						   /*UnfoldLoad*/ false,
+						   /*UnfoldStore*/ true, NewMIs);
+	  (void)Unfolded;
+	  assert(Unfolded && "Must unfold");
+	  auto It = MachineBasicBlock::iterator(MI);
+	  for (auto *NewMI : NewMIs) {
+	    It = MBB.insertAfter(It, NewMI);
+	  }
+	  MI.eraseFromParent();
+	  Changed = true;
+	  ++NumOfConvertedMemSetCCs;
+	  //llvm::errs() << MBB;
+	  goto retry_mem;
+	}
+      }
+    }
+    /* second phase - remove setcc with register dests */
+ retry_reg:
   for(MachineBasicBlock &MBB : MF) {
     for(MachineInstr &MI : MBB) {
       X86::CondCode CC = X86::getCondFromSETCC(MI);
-      if(CC != X86::COND_INVALID && not(MI.mayStore())) {
-	//llvm::errs() << MI << "\n";
+      if(CC != X86::COND_INVALID) {
+	assert(not(MI.mayStore()));
 	convertSetCCInstsToBranches(MI);
 	Changed = true;
 	++NumOfRemovedSetCCs;
-	goto retry;
+	goto retry_reg;
       }
     }
   }
