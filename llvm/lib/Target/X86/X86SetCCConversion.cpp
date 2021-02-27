@@ -92,7 +92,7 @@ bool X86SetCCConverterPass::runOnMachineFunction(MachineFunction &MF) {
     for(MachineInstr &MI : MBB) {
       X86::CondCode CC = X86::getCondFromSETCC(MI);
       if(CC != X86::COND_INVALID) {
-	llvm::errs() << MI << "\n";
+	//llvm::errs() << MI << "\n";
 	convertSetCCInstsToBranches(MI);
 	Changed = true;
 	goto retry;
@@ -188,31 +188,37 @@ void X86SetCCConverterPass::convertSetCCInstsToBranches(MachineInstr & MI) const
   Register destReg = MI.getOperand(0).getReg();
   Register zeroReg = MRI->createVirtualRegister(&X86::GR32RegClass);
   Register oneReg = MRI->createVirtualRegister(&X86::GR32RegClass);
+  Register phiReg = MRI->createVirtualRegister(&X86::GR32RegClass);
   auto CIT = MachineBasicBlock::iterator(MI);
   
-  BuildMI(*MBB, CIT, DL, TII->get(X86::MOV32r0), zeroReg);
-  BuildMI(*MBB, CIT, DL, TII->get(X86::JCC_1)).addMBB(SinkMBB).addImm(CC);
-  BuildMI(*MBB, CIT, DL, TII->get(X86::JMP_1)).addMBB(FalseMBB);
+  BuildMI(*MBB, CIT, DL, TII->get(X86::MOV32ri), zeroReg).addImm(0);
+  BuildMI(*MBB, CIT, DL, TII->get(X86::JCC_1)).addMBB(FalseMBB).addImm(CC);
+  BuildMI(*MBB, CIT, DL, TII->get(X86::JMP_1)).addMBB(SinkMBB);
 
-  llvm::errs() << *MBB;
+  //llvm::errs() << *MBB;
 
   auto FIT = FalseMBB->begin();
-  BuildMI(*FalseMBB, FIT, DL, TII->get(X86::MOV32r1), oneReg);
+  BuildMI(*FalseMBB, FIT, DL, TII->get(X86::MOV32ri), oneReg).addImm(1);
   BuildMI(*FalseMBB, FIT, DL, TII->get(X86::JMP_1)).addMBB(SinkMBB);
 
   
   // Add the sink block to the false block successors.
   FalseMBB->addSuccessor(SinkMBB);
 
-  llvm::errs() << *FalseMBB;
+  //llvm::errs() << *FalseMBB;
 
-  BuildMI(*SinkMBB, SinkMBB->begin(), DL, TII->get(X86::PHI), destReg)
-    .addReg(zeroReg)
-    .addMBB(FalseMBB)
+  auto SIT = SinkMBB->begin();
+  BuildMI(*SinkMBB, SIT, DL, TII->get(X86::PHI), phiReg)
     .addReg(oneReg)
+    .addMBB(FalseMBB)
+    .addReg(zeroReg)
     .addMBB(MBB);
 
-  llvm::errs() << *SinkMBB;
+  
+  BuildMI(*SinkMBB, SIT, DL, TII->get(X86::COPY), destReg)
+    .addReg(phiReg, 0, X86::sub_8bit);  
+
+  //llvm::errs() << *SinkMBB;
   
   // Now remove the CMOV(s).
   MBB->erase(MI);
