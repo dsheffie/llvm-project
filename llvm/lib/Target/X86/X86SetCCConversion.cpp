@@ -47,7 +47,7 @@ using namespace llvm;
 //STATISTIC(NumOfSkippedCmovGroups, "Number of unsupported CMOV-groups");
 //STATISTIC(NumOfCmovGroupCandidate, "Number of CMOV-group candidates");
 //STATISTIC(NumOfLoopCandidate, "Number of CMOV-conversion profitable loops");
-//STATISTIC(NumOfOptimizedCmovGroups, "Number of optimized CMOV-groups");
+STATISTIC(NumOfRemovedSetCCs, "Number of removed SetCCs");
 
 namespace {
 
@@ -91,10 +91,11 @@ bool X86SetCCConverterPass::runOnMachineFunction(MachineFunction &MF) {
   for(MachineBasicBlock &MBB : MF) {
     for(MachineInstr &MI : MBB) {
       X86::CondCode CC = X86::getCondFromSETCC(MI);
-      if(CC != X86::COND_INVALID) {
+      if(CC != X86::COND_INVALID && not(MI.mayStore())) {
 	//llvm::errs() << MI << "\n";
 	convertSetCCInstsToBranches(MI);
 	Changed = true;
+	++NumOfRemovedSetCCs;
 	goto retry;
       }
     }
