@@ -469,7 +469,6 @@ bool X86PassConfig::addILPOpts() {
   if (EnableMachineCombinerPass)
     addPass(&MachineCombinerID);
   addPass(createX86CmovConverterPass());
-  addPass(createX86UnfoldPass());
   return true;
 }
 
@@ -497,6 +496,7 @@ void X86PassConfig::addPreRegAlloc() {
 void X86PassConfig::addMachineSSAOptimization() {
   addPass(createX86DomainReassignmentPass());
   TargetPassConfig::addMachineSSAOptimization();
+  addPass(createX86UnfoldPass());
 }
 
 void X86PassConfig::addPostRegAlloc() {

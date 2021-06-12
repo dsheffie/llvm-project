@@ -78,143 +78,53 @@ char X86UnfoldPass::ID = 0;
 
 bool X86UnfoldPass::run(MachineBasicBlock &MBB) {
   bool changed = false;
- retry:    
+  MachineFunction *MF = MBB.getParent();
   auto It = MBB.begin();
   while(It != MBB.end()) {
     MachineInstr &MI = *It;
     //check if the instruction may load
-    unsigned op = MI.getOpcode();
+    unsigned op = MI.getOpcode(), LoadRegIndex, NewOpc;
 
-    bool gotRIP = false, gotStack = false;
-    for(auto &U : MI.uses()) {
-      if(U.getType() ==  MachineOperand::MO_FrameIndex) {
-	gotStack = true;
-      }
-      
-      if(U.isReg()) {
-	if(U.getReg() == X86::RIP) {
-	  gotRIP = true;
-	}
-      }
-    }
-
-    if((MI.mayLoad() && MI.mayStore()) || gotRIP || gotStack) {
+    if(MI.mayLoad() && MI.mayStore()) {
       ++It;
       continue;
     }
 
-    
-#if 1
-    switch(op)
-      {
-      case X86::SETCCm:
-	
-      case X86::MOVDI2PDIrm:
-
-      case X86::VMOVDQUrm:	
-      case X86::VMOVDQArm:
-      case X86::VMOVDQAmr:
-      case X86::VMOVDQUmr:
-
-	
-      case X86::MOV8mr_NOREX:
-      case X86::MOVPDI2DImr:
-	
-      case X86::MOVSX32rm8:	
-      case X86::MOVSX32rm16:
-      case X86::MOVZX32rm8:
-      case X86::MOVZX32rm16:	
-
-      case X86::MOVSX64rm8:
-      case X86::MOVSX64rm16:
-      case X86::MOVSX64rm32:
-
-	
-      case X86::MOV8mi:
-      case X86::MOV16mi:
-      case X86::MOV32mi:
-	
-      case X86::MOV8mr:
-      case X86::MOV16mr:
-      case X86::MOV32mr:
-      case X86::MOV64mr:
-      case X86::MOV8rm:
-      case X86::MOV16rm:
-      case X86::MOV32rm:
-      case X86::MOV64rm:
-
-      case X86::MOV64mi32:
-
-
-      case X86::MOVAPSmr:
-      case X86::MOVAPSrm:
-      case X86::MOVAPDmr:
-      case X86::MOVAPDrm:
-      case X86::VMOVAPSmr:
-      case X86::VMOVAPSrm:
-      case X86::VMOVAPDmr:
-      case X86::VMOVAPDrm:
-	
-	
-      case X86::MOVSSrm_alt:
-      case X86::MOVSDrm_alt:
-      case X86::VMOVSSrm_alt:
-      case X86::VMOVSDrm_alt:	
-	
-      case X86::VMOVUPSYrm:
-      case X86::VMOVUPSYmr:
-	
-      case X86::MOVSDmr:
-      case X86::MOVSSmr:
-      case X86::MOVSDrm:
-      case X86::MOVSSrm:
-      case X86::MOVUPSrm:
-      case X86::MOVUPSmr:
-      case X86::MOVUPDrm:
-      case X86::MOVUPDmr:
-
-      case X86::VMOVSDmr:
-      case X86::VMOVSSmr:
-      case X86::VMOVSDrm:
-      case X86::VMOVSSrm:
-      case X86::VMOVUPSrm:
-      case X86::VMOVUPSmr:
-      case X86::VMOVUPDrm:
-      case X86::VMOVUPDmr:
-	
-      case X86::CALL64m:
-      case X86::JMP64m:
-      case X86::TCRETURNmi64:
-	++It;
-	continue;	
-      default:
-	break;
-      }
-#endif
-    
-    const X86MemoryFoldTableEntry *I = lookupUnfoldTable(op);
-    if ((I == nullptr))  {
+    /* copied out of TwoAddressInstructionPass.cpp */
+    NewOpc = TII->getOpcodeAfterMemoryUnfold(op, /*UnfoldLoad=*/true, /*UnfoldStore=*/false, &LoadRegIndex);
+    if (NewOpc == 0)  {
       ++It;
+      continue;
+    }
+    const MCInstrDesc &UnfoldMCID = TII->get(NewOpc);
+    if (UnfoldMCID.getNumDefs() != 1) {
       continue;
     }
     // Get a fresh register to use as the destination of the MOV.
-    const TargetRegisterClass *RC = MRI->getRegClass(MI.getOperand(0).getReg());
+    const TargetRegisterClass *RC = TRI->getAllocatableClass(TII->getRegClass(UnfoldMCID, LoadRegIndex, TRI, *MF));
     Register TmpReg = MRI->createVirtualRegister(RC);
 
-    SmallVector<MachineInstr *, 4> NewMIs;
-    bool Unfolded = TII->unfoldMemoryOperand(*(MBB.getParent()), MI, TmpReg,
+    SmallVector<MachineInstr *, 2> NewMIs;
+    bool Unfolded = TII->unfoldMemoryOperand(*MF, MI, TmpReg,
                                              /*UnfoldLoad*/ true,
                                              /*UnfoldStore*/ false, NewMIs);
     (void)Unfolded;
     assert(Unfolded && "Must unfold");
-    llvm::errs() << "replacing : " << *It << " with \n";
+
+    bool generatedSameOpC = false;
+    for (auto *NewMI : NewMIs) {
+      generatedSameOpC |= (NewMI->getOpcode() == op);
+    }
+    if(generatedSameOpC) {
+      ++It;
+      continue;
+    }
+    
     for (auto *NewMI : NewMIs) {
       It = MBB.insertAfter(It, NewMI);
-      llvm::errs() << "\t" << *It << "\n";
     }
     MI.eraseFromParent();
-    //llvm::errs() << MBB;
-    //goto retry;
+    changed = true;
   }
   
   return changed;
