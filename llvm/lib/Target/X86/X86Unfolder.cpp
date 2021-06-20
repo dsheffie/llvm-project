@@ -46,7 +46,8 @@ using namespace llvm;
 
 #define DEBUG_TYPE JCC2IRET_NAME
 
-
+cl::opt<bool> VerboseUnfold("x86-verbose-unfold", cl::init(false),
+			    cl::desc(""), cl::Hidden);
 namespace {
 
 class X86UnfoldPass : public MachineFunctionPass {
@@ -56,14 +57,13 @@ public:
   static char ID;
 
   X86UnfoldPass(): MachineFunctionPass(ID) { }
-
   StringRef getPassName() const override { return JCC2IRET_DESC; }
-
   bool runOnMachineFunction(MachineFunction &MF) override;
 
 
 private:
   /// Machine instruction info used throughout the class.
+  bool attemptToUnfold(MachineInstr &MI, MachineBasicBlock &MBB, MachineFunction &MF) const;
   const X86InstrInfo *TII = nullptr;
   MachineRegisterInfo *MRI = nullptr;
   const X86Subtarget *Subtarget = nullptr;
@@ -75,56 +75,54 @@ private:
 
 char X86UnfoldPass::ID = 0;
 
+bool X86UnfoldPass::attemptToUnfold(MachineInstr &MI, MachineBasicBlock &MBB, MachineFunction &MF) const {
+  unsigned op = MI.getOpcode(), LoadRegIndex, NewOpc;
+  if(MI.mayLoad() && MI.mayStore()) {
+    return false;
+  }
+  NewOpc = TII->getOpcodeAfterMemoryUnfold(op, /*UnfoldLoad=*/true, /*UnfoldStore=*/false, &LoadRegIndex);
+  if (NewOpc == 0)  {
+    return false;
+  }
+  const MCInstrDesc &UnfoldMCID = TII->get(NewOpc);
+  if (UnfoldMCID.getNumDefs() > 1) {
+    return false;
+  }
+  const TargetRegisterClass *RC = TRI->getAllocatableClass(TII->getRegClass(UnfoldMCID, LoadRegIndex, TRI, MF));
+  Register TmpReg = MRI->createVirtualRegister(RC);
+  
+  SmallVector<MachineInstr *, 2> NewMIs;
+  bool Unfolded = TII->unfoldMemoryOperand(MF, MI, TmpReg,
+					   /*UnfoldLoad*/ true,
+					   /*UnfoldStore*/ false, NewMIs);
+  (void)Unfolded;
+  assert(Unfolded && "Must unfold");
+  
+  for (auto *NewMI : NewMIs) {
+    if(NewMI->getOpcode() == op) {
+      return false;
+    }
+  }
+  if(VerboseUnfold) {
+    llvm::errs() << "unfolding : " << MI;
+  }
+  auto It = MachineBasicBlock::iterator(MI);
+  for (auto *NewMI : NewMIs) {
+    It = MBB.insertAfter(It, NewMI);
+  }
+  MI.eraseFromParent();
+  return true;
+}
 
 bool X86UnfoldPass::run(MachineBasicBlock &MBB) {
   bool changed = false;
-  MachineFunction *MF = MBB.getParent();
-  auto It = MBB.begin();
-  while(It != MBB.end()) {
-    MachineInstr &MI = *It;
-    //check if the instruction may load
-    unsigned op = MI.getOpcode(), LoadRegIndex, NewOpc;
-
-    if(MI.mayLoad() && MI.mayStore()) {
-      ++It;
-      continue;
+  MachineFunction &MF = *(MBB.getParent());
+ retry:
+  for(MachineInstr &MI : MBB) {
+    if(MI.mayLoad() && attemptToUnfold(MI,MBB,MF)) {
+      changed = true;
+      goto retry;
     }
-
-    /* copied out of TwoAddressInstructionPass.cpp */
-    NewOpc = TII->getOpcodeAfterMemoryUnfold(op, /*UnfoldLoad=*/true, /*UnfoldStore=*/false, &LoadRegIndex);
-    if (NewOpc == 0)  {
-      ++It;
-      continue;
-    }
-    const MCInstrDesc &UnfoldMCID = TII->get(NewOpc);
-    if (UnfoldMCID.getNumDefs() != 1) {
-      continue;
-    }
-    // Get a fresh register to use as the destination of the MOV.
-    const TargetRegisterClass *RC = TRI->getAllocatableClass(TII->getRegClass(UnfoldMCID, LoadRegIndex, TRI, *MF));
-    Register TmpReg = MRI->createVirtualRegister(RC);
-
-    SmallVector<MachineInstr *, 2> NewMIs;
-    bool Unfolded = TII->unfoldMemoryOperand(*MF, MI, TmpReg,
-                                             /*UnfoldLoad*/ true,
-                                             /*UnfoldStore*/ false, NewMIs);
-    (void)Unfolded;
-    assert(Unfolded && "Must unfold");
-
-    bool generatedSameOpC = false;
-    for (auto *NewMI : NewMIs) {
-      generatedSameOpC |= (NewMI->getOpcode() == op);
-    }
-    if(generatedSameOpC) {
-      ++It;
-      continue;
-    }
-    
-    for (auto *NewMI : NewMIs) {
-      It = MBB.insertAfter(It, NewMI);
-    }
-    MI.eraseFromParent();
-    changed = true;
   }
   
   return changed;
